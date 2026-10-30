@@ -39,6 +39,9 @@ export function App() {
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Anti-repetition session memory
+  const recentSentencesRef = React.useRef<string[]>([]);
+
   // Modals state
   const [isHandbookOpen, setIsHandbookOpen] = useState(false);
   const [isMistakesOpen, setIsMistakesOpen] = useState(false);
@@ -53,7 +56,17 @@ export function App() {
       setEvaluation(null);
 
       try {
-        const nextEx = await generateExercise(activeSettings);
+        const nextEx = await generateExercise(
+          activeSettings,
+          undefined,
+          recentSentencesRef.current
+        );
+        if (nextEx && nextEx.targetSentence) {
+          recentSentencesRef.current = [
+            ...recentSentencesRef.current.slice(-30),
+            nextEx.targetSentence,
+          ];
+        }
         setCurrentExercise(nextEx);
       } catch (err: any) {
         console.error('Failed to generate exercise:', err);
@@ -75,15 +88,21 @@ export function App() {
 
   // Update Settings
   const handleUpdateSettings = (newSettings: UserSettings) => {
-    setSettings(newSettings);
-    saveSettings(newSettings);
-    // If modes, tenses or difficulty changed, reload exercise
-    if (
+    const hasFilterChanged =
       JSON.stringify(newSettings.selectedTenses) !== JSON.stringify(settings.selectedTenses) ||
       newSettings.mode !== settings.mode ||
       newSettings.difficulty !== settings.difficulty ||
-      newSettings.provider !== settings.provider
-    ) {
+      newSettings.provider !== settings.provider ||
+      newSettings.ollamaModel !== settings.ollamaModel ||
+      newSettings.ollamaEndpoint !== settings.ollamaEndpoint ||
+      newSettings.deepseekModel !== settings.deepseekModel ||
+      newSettings.openRouterModel !== settings.openRouterModel;
+
+    setSettings(newSettings);
+    saveSettings(newSettings);
+
+    // If modes, tenses, difficulty or model changed, reload exercise
+    if (hasFilterChanged) {
       loadNextExercise(newSettings);
     }
   };

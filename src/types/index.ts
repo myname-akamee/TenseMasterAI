@@ -42,7 +42,7 @@ export type ExerciseMode =
 
 export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced';
 
-export type AIProvider = 'builtin' | 'openrouter' | 'groq' | 'gemini';
+export type AIProvider = 'builtin' | 'ollama' | 'deepseek' | 'openrouter' | 'groq' | 'gemini';
 
 export interface Exercise {
   id: string;
@@ -84,6 +84,10 @@ export interface UserSettings {
   groqModel: string;
   geminiApiKey: string;
   geminiModel: string;
+  ollamaEndpoint?: string;
+  ollamaModel?: string;
+  deepseekApiKey?: string;
+  deepseekModel?: string;
   selectedTenses: TenseId[];
   mode: ExerciseMode;
   difficulty: DifficultyLevel;

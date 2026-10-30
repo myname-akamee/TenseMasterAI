@@ -28,14 +28,16 @@
   - *Все Present*, *Все Past*, *Все Future*
   - *Базовые 4 времени для новичков*
 
-### 2. 🤖 Подключение к бесплатным ИИ-моделям
-- **Встроенный Smart AI (Оффлайн)**: Работает моментально прямо «из коробки» без API-ключей и интернета.
+### 2. 🤖 Подключение к бесплатным ИИ-моделям и оффлайн-нейросетям
+- **Ollama Local AI (DeepSeek R1 Оффлайн)**: Полностью локальный запуск нейросетей (DeepSeek R1, Llama 3.2, Qwen 2.5) на вашем компьютере **без интернета, без API-ключей и 100% бесплатно**.
+- **Встроенный Smart AI (Оффлайн)**: Работает моментально прямо «из коробки» без API-ключей и интернета, с процедурной генерацией и умной защитой от повторений упражнений.
+- **DeepSeek Official API**: Прямое подключение к `deepseek-chat` (DeepSeek-V3) и `deepseek-reasoner` (DeepSeek-R1).
 - **OpenRouter (100% бесплатные модели с тегом `:free`)**:
+  - `deepseek/deepseek-r1:free` (Топовая рассуждающая модель)
   - `google/gemini-2.0-flash-lite:free`
   - `meta-llama/llama-3.3-70b-instruct:free`
-  - `mistralai/mistral-7b-instruct:free`
   - `qwen/qwen-2.5-72b-instruct:free`
-  - `deepseek/deepseek-r1:free`
+  - `mistralai/mistral-7b-instruct:free`
 - **Groq Cloud (Бесплатный тир)**:
   - `llama-3.3-70b-versatile` (молниеносная генерация 500+ токенов в секунду)
   - `llama-3.1-8b-instant`
@@ -106,12 +108,17 @@ npm run dev
 
 ---
 
-## 🔑 Как подключить бесплатные ИИ-модели
+## 🔑 Как подключить бесплатные ИИ-модели и запустить DeepSeek оффлайн
 
 1. Нажмите иконку **⚙️ (Настройки)** в шапке приложения.
 2. Выберите провайдера:
-   - **OpenRouter Free**: Получите бесплатный ключ на [openrouter.ai/keys](https://openrouter.ai/keys) и выберите любую модель с тегом `:free` (например, `google/gemini-2.0-flash-lite:free`).
+   - **Ollama Local AI (100% Оффлайн DeepSeek)**:
+     - Установите [Ollama](https://ollama.com)
+     - В терминале выполните: `ollama run deepseek-r1` (или `ollama run deepseek-r1:1.5b` для слабых ПК)
+     - Работает без интернета и без API ключей!
+   - **DeepSeek Official API**: Введите ключ с [platform.deepseek.com](https://platform.deepseek.com/api_keys) для моделей DeepSeek-V3 и DeepSeek-R1.
+   - **OpenRouter Free**: Получите бесплатный ключ на [openrouter.ai/keys](https://openrouter.ai/keys) и выберите модель `deepseek/deepseek-r1:free`.
    - **Groq Cloud Free**: Создайте бесплатный ключ на [console.groq.com/keys](https://console.groq.com/keys) для мгновенных ответов на базе Llama 3.3 70B.
    - **Google Gemini**: Получите бесплатный ключ в [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) для модели `gemini-2.0-flash`.
-   - **Встроенный Smart AI**: Никаких ключей не нужно, работает сразу!
+   - **Встроенный Smart AI**: Никаких ключей не нужно, работает сразу с алгоритмической защитой от повторений!
 3. Нажмите **«Проверить подключение»**, затем **«Сохранить настройки»**.

@@ -10,14 +10,19 @@ import {
   evaluateBuiltInAnswer,
 } from './builtInEngine';
 
-// Helper to sanitize JSON response from LLMs that might wrap in ```json ... ```
-function extractJson(text: string): any {
+// Helper to sanitize JSON response from LLMs that might wrap in ```json ... ``` or include DeepSeek <think>...</think>
+export function extractJson(text: string): any {
   let cleaned = text.trim();
+
+  // Strip DeepSeek-R1 reasoning thought tags <think>...</think>
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
   if (cleaned.startsWith('```json')) {
     cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
   } else if (cleaned.startsWith('```')) {
     cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
   }
+
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -26,7 +31,18 @@ function extractJson(text: string): any {
   return JSON.parse(cleaned);
 }
 
-// Call OpenRouter or Groq (both OpenAI-compatible)
+// Check if user has an active AI model configured
+export function isAIEnabled(settings: UserSettings): boolean {
+  if (settings.provider === 'builtin') return false;
+  if (settings.provider === 'ollama') return true; // Local Ollama runs offline without API keys
+  if (settings.provider === 'deepseek') return Boolean(settings.deepseekApiKey?.trim());
+  if (settings.provider === 'openrouter') return Boolean(settings.openRouterApiKey?.trim());
+  if (settings.provider === 'groq') return Boolean(settings.groqApiKey?.trim());
+  if (settings.provider === 'gemini') return Boolean(settings.geminiApiKey?.trim());
+  return false;
+}
+
+// Call OpenAI-compatible endpoints (OpenRouter, Groq, DeepSeek, Ollama, LM Studio)
 async function callOpenAICompatible(
   url: string,
   apiKey: string,
@@ -36,8 +52,11 @@ async function callOpenAICompatible(
 ): Promise<string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
   };
+
+  if (apiKey && apiKey.trim()) {
+    headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+  }
 
   if (url.includes('openrouter.ai')) {
     headers['HTTP-Referer'] = 'https://englishtrainer.local';
@@ -65,6 +84,39 @@ async function callOpenAICompatible(
 
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
+}
+
+// Call local offline Ollama runner (DeepSeek R1 / V3 / Qwen / Llama)
+async function callOllama(
+  endpoint: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
+  let cleanEndpoint = (endpoint || 'http://localhost:11434/v1').replace(/\/+$/, '');
+  if (!cleanEndpoint.endsWith('/chat/completions')) {
+    cleanEndpoint = `${cleanEndpoint}/chat/completions`;
+  }
+
+  const proxyEndpoint = '/api/ollama/v1/chat/completions';
+
+  try {
+    return await callOpenAICompatible(cleanEndpoint, '', model, systemPrompt, userPrompt);
+  } catch (err: any) {
+    // If direct call fails on localhost due to browser CORS, fallback to Vite proxy if on localhost
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      try {
+        return await callOpenAICompatible(proxyEndpoint, '', model, systemPrompt, userPrompt);
+      } catch {
+        // Fall through
+      }
+    }
+    throw new Error(
+      `Не удалось связаться с локальной нейросетью Ollama (${cleanEndpoint}). ` +
+      `Убедитесь, что Ollama запущена командой 'ollama run ${model}'. ` +
+      `Ошибка: ${err?.message || 'Connection refused'}`
+    );
+  }
 }
 
 // Call Google Gemini REST API directly
@@ -115,6 +167,28 @@ async function callLLM(
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
+  if (settings.provider === 'ollama') {
+    return callOllama(
+      settings.ollamaEndpoint || 'http://localhost:11434/v1',
+      settings.ollamaModel || 'deepseek-r1',
+      systemPrompt,
+      userPrompt
+    );
+  }
+
+  if (settings.provider === 'deepseek') {
+    if (!settings.deepseekApiKey) {
+      throw new Error('API ключ DeepSeek не указан. Задайте его в настройках.');
+    }
+    return callOpenAICompatible(
+      'https://api.deepseek.com/chat/completions',
+      settings.deepseekApiKey,
+      settings.deepseekModel || 'deepseek-chat',
+      systemPrompt,
+      userPrompt
+    );
+  }
+
   if (settings.provider === 'openrouter') {
     if (!settings.openRouterApiKey) {
       throw new Error('API ключ OpenRouter не указан. Задайте его в настройках.');
@@ -122,7 +196,7 @@ async function callLLM(
     return callOpenAICompatible(
       'https://openrouter.ai/api/v1/chat/completions',
       settings.openRouterApiKey,
-      settings.openRouterModel || 'google/gemini-2.0-flash-lite:free',
+      settings.openRouterModel || 'deepseek/deepseek-r1:free',
       systemPrompt,
       userPrompt
     );
@@ -160,13 +234,42 @@ async function callLLM(
 export async function testAIConnection(
   provider: UserSettings['provider'],
   apiKey: string,
-  model: string
+  model: string,
+  endpoint?: string
 ): Promise<{ success: boolean; message: string }> {
   if (provider === 'builtin') {
     return {
       success: true,
-      message: 'Встроенный оффлайн-движок активен и готов к работе без ключей!',
+      message: 'Встроенный Smart AI активен: расширенная база 12 времен, алгоритмический генератор и защита от повторов!',
     };
+  }
+
+  if (provider === 'ollama') {
+    try {
+      const activeEndpoint = endpoint || 'http://localhost:11434/v1';
+      const activeModel = model || 'deepseek-r1';
+      const res = await callOllama(
+        activeEndpoint,
+        activeModel,
+        'You are an AI assistant. Reply with only: OK',
+        'Ping connection test.'
+      );
+      if (res) {
+        return {
+          success: true,
+          message: `Оффлайн-нейросеть Ollama (${activeModel}) успешно подключена и работает!`,
+        };
+      }
+      return {
+        success: false,
+        message: 'Ollama вернула пустой ответ. Проверьте, загружена ли модель командой ollama run ' + activeModel,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.message || 'Не удалось связаться с локальной Ollama.',
+      };
+    }
   }
 
   if (!apiKey.trim()) {
@@ -185,6 +288,10 @@ export async function testAIConnection(
       groqModel: model,
       geminiApiKey: provider === 'gemini' ? apiKey : '',
       geminiModel: model,
+      deepseekApiKey: provider === 'deepseek' ? apiKey : '',
+      deepseekModel: model,
+      ollamaEndpoint: endpoint || 'http://localhost:11434/v1',
+      ollamaModel: model,
       selectedTenses: ['present_simple'],
       mode: 'fill_blank',
       difficulty: 'beginner',
@@ -216,10 +323,11 @@ export async function testAIConnection(
   }
 }
 
-// Generate Exercise using AI or Built-in Engine
+// Generate Exercise using AI or Built-in Engine with Anti-Repetition
 export async function generateExercise(
   settings: UserSettings,
-  forcedTenses?: TenseId[]
+  forcedTenses?: TenseId[],
+  excludeSentences: string[] = []
 ): Promise<Exercise> {
   const tensesToUse = (forcedTenses && forcedTenses.length > 0)
     ? forcedTenses
@@ -227,41 +335,55 @@ export async function generateExercise(
     ? settings.selectedTenses
     : (['present_simple'] as TenseId[]);
 
-  // If user selected built-in provider or no key provided, use local engine
-  if (
-    settings.provider === 'builtin' ||
-    (settings.provider === 'openrouter' && !settings.openRouterApiKey) ||
-    (settings.provider === 'groq' && !settings.groqApiKey) ||
-    (settings.provider === 'gemini' && !settings.geminiApiKey)
-  ) {
-    return generateBuiltInExercise(tensesToUse, settings.mode, settings.difficulty);
+  // If user selected built-in provider or AI credentials are not configured, use local engine
+  if (!isAIEnabled(settings)) {
+    return generateBuiltInExercise(tensesToUse, settings.mode, settings.difficulty, excludeSentences);
   }
 
-  // Use AI Model
+  // Use AI Model (Ollama DeepSeek, OpenRouter DeepSeek, etc.)
   try {
     const targetTenseId = tensesToUse[Math.floor(Math.random() * tensesToUse.length)];
     const tenseInfo = TENSES_MAP.get(targetTenseId);
     const tenseName = tenseInfo ? tenseInfo.nameEn : targetTenseId;
 
-    const systemPrompt = `You are a professional Cambridge-certified English teacher creating grammar exercises.
+    const topics = [
+      'travel and exploration',
+      'cutting-edge technology and artificial intelligence',
+      'daily routines and healthy habits',
+      'software development and engineering',
+      'friendship and human connection',
+      'space science and astronomical discoveries',
+      'creative arts, music and literature',
+      'environmental protection and nature',
+    ];
+    const chosenTopic = topics[Math.floor(Math.random() * topics.length)];
+
+    const avoidText = excludeSentences.length > 0
+      ? `DO NOT repeat any of these recent sentences or their verbs: ${excludeSentences.slice(-6).map((s) => `"${s}"`).join('; ')}.`
+      : '';
+
+    const systemPrompt = `You are a world-class Cambridge-certified English teacher creating interactive grammar exercises.
 You MUST output ONLY valid JSON without any markdown formatting or explanation outside JSON.
 Output schema:
 {
   "tenseId": "${targetTenseId}",
   "mode": "${settings.mode}",
   "difficulty": "${settings.difficulty}",
-  "promptRu": "Instruction in Russian, e.g. Раскрой скобки в Present Perfect Continuous:",
-  "sentenceEn": "English sentence with blank like 'She ____ (wait) for 2 hours.' or full sentence if translation",
+  "promptRu": "Instruction in Russian, e.g. Раскрой скобки в ${tenseName}:",
+  "sentenceEn": "English sentence with blank like 'She ____ (wait) for 2 hours.' or full sentence if translation/transformation",
   "targetSentence": "Complete correct English sentence, e.g. 'She has been waiting for 2 hours.'",
   "acceptableAnswers": ["has been waiting", "She has been waiting for 2 hours."],
   "baseVerb": "wait",
-  "hint": "Brief helpful clue in Russian hinting at the formula or time marker without spoiling the whole answer",
+  "options": ["optional array of 4 options if mode is choice"],
+  "hint": "Brief subtle hint in Russian (formula or time marker clue without spoiling the whole answer)",
   "explanation": "Clear educational explanation in Russian of why this tense and form is used"
 }`;
 
     const userPrompt = `Create ONE interactive English exercise strictly for the tense "${tenseName}" (${targetTenseId}).
 Exercise Mode: "${settings.mode}" (fill_blank, translate, transform, or choice).
 Difficulty: "${settings.difficulty}".
+Topic context: ${chosenTopic}.
+${avoidText}
 Context should be realistic, natural modern conversational English.
 Output ONLY the JSON object.`;
 
@@ -275,7 +397,7 @@ Output ONLY the JSON object.`;
       mode: settings.mode,
       difficulty: settings.difficulty,
       promptRu: parsed.promptRu || `Упражнение на ${tenseName}:`,
-      sentenceEn: parsed.sentenceEn,
+      sentenceEn: parsed.sentenceEn || parsed.targetSentence,
       targetSentence: parsed.targetSentence,
       acceptableAnswers: parsed.acceptableAnswers || [parsed.targetSentence],
       baseVerb: parsed.baseVerb,
@@ -285,7 +407,7 @@ Output ONLY the JSON object.`;
     };
   } catch (error) {
     console.warn('AI Generation failed, falling back to built-in generator:', error);
-    return generateBuiltInExercise(tensesToUse, settings.mode, settings.difficulty);
+    return generateBuiltInExercise(tensesToUse, settings.mode, settings.difficulty, excludeSentences);
   }
 }
 
@@ -294,12 +416,7 @@ export async function getExerciseHint(
   exercise: Exercise,
   settings: UserSettings
 ): Promise<string> {
-  if (
-    settings.provider === 'builtin' ||
-    (settings.provider === 'openrouter' && !settings.openRouterApiKey) ||
-    (settings.provider === 'groq' && !settings.groqApiKey) ||
-    (settings.provider === 'gemini' && !settings.geminiApiKey)
-  ) {
+  if (!isAIEnabled(settings)) {
     return exercise.hint;
   }
 
@@ -317,7 +434,7 @@ Give a short motivating hint in Russian for the student.`;
 
     const response = await callLLM(settings, systemPrompt, userPrompt);
     return response.trim() || exercise.hint;
-  } catch (error) {
+  } catch {
     return exercise.hint;
   }
 }
@@ -343,19 +460,14 @@ export async function evaluateAnswer(
     };
   }
 
-  if (
-    settings.provider === 'builtin' ||
-    (settings.provider === 'openrouter' && !settings.openRouterApiKey) ||
-    (settings.provider === 'groq' && !settings.groqApiKey) ||
-    (settings.provider === 'gemini' && !settings.geminiApiKey)
-  ) {
+  if (!isAIEnabled(settings)) {
     return evaluateBuiltInAnswer(exercise, trimmed);
   }
 
   // Use AI for comprehensive pedagogical assessment
   try {
     const systemPrompt = `You are a supportive, insightful English teacher assessing a student's answer.
-You MUST output ONLY valid JSON in the exact schema below.
+You MUST output ONLY valid JSON in the exact schema below without markdown formatting or reasoning tags.
 Output schema:
 {
   "score": <integer from 1 to 10>,

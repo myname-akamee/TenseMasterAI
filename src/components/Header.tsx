@@ -27,6 +27,16 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const getProviderBadge = () => {
     switch (settings.provider) {
+      case 'ollama':
+        return {
+          label: `Ollama ${settings.ollamaModel || 'DeepSeek'} (Оффлайн)`,
+          color: 'from-emerald-500/20 to-teal-500/20 text-emerald-300 border-emerald-500/30',
+        };
+      case 'deepseek':
+        return {
+          label: `DeepSeek AI (${settings.deepseekModel || 'V3'})`,
+          color: 'from-sky-500/20 to-indigo-500/20 text-sky-300 border-sky-500/30',
+        };
       case 'openrouter':
         return {
           label: 'OpenRouter Free AI',
@@ -44,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
         };
       default:
         return {
-          label: 'Smart AI Engine',
+          label: 'Smart AI Engine (Оффлайн)',
           color: 'from-emerald-500/20 to-teal-500/20 text-emerald-300 border-emerald-500/30',
         };
     }

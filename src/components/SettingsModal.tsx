@@ -12,6 +12,9 @@ import {
   Sparkles,
   Eye,
   EyeOff,
+  Terminal,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { AIProvider, UserSettings } from '../types';
 import { testAIConnection } from '../services/aiService';
@@ -33,6 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [copiedCmd, setCopiedCmd] = useState(false);
 
   if (!isOpen) return null;
 
@@ -41,14 +45,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTestResult(null);
   };
 
+  const handleCopyOllamaCmd = (cmd: string) => {
+    navigator.clipboard.writeText(cmd);
+    setCopiedCmd(true);
+    setTimeout(() => setCopiedCmd(false), 2000);
+  };
+
   const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
 
     let key = '';
     let model = '';
+    let endpoint = '';
 
-    if (current.provider === 'openrouter') {
+    if (current.provider === 'ollama') {
+      endpoint = current.ollamaEndpoint || 'http://localhost:11434/v1';
+      model = current.ollamaModel || 'deepseek-r1';
+    } else if (current.provider === 'deepseek') {
+      key = current.deepseekApiKey || '';
+      model = current.deepseekModel || 'deepseek-chat';
+    } else if (current.provider === 'openrouter') {
       key = current.openRouterApiKey;
       model = current.openRouterModel;
     } else if (current.provider === 'groq') {
@@ -59,7 +76,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       model = current.geminiModel;
     }
 
-    const res = await testAIConnection(current.provider, key, model);
+    const res = await testAIConnection(current.provider, key, model, endpoint);
     setTestResult(res);
     setTesting(false);
   };
@@ -81,14 +98,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       name: 'Встроенный Smart AI',
       tag: 'Без ключей (Оффлайн)',
       tagColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-      desc: 'Работает прямо сейчас, мгновенный отклик, база из сотен шаблонов, оффлайн.',
+      desc: 'Работает моментально, 12 времен, процедурный генератор, защита от повторов.',
+    },
+    {
+      id: 'ollama',
+      name: 'Ollama Local AI (DeepSeek)',
+      tag: '100% Оффлайн нейросеть',
+      tagColor: 'bg-teal-500/10 text-teal-400 border-teal-500/30',
+      desc: 'Локальный запуск DeepSeek R1 прямо на компьютере без интернета и без API ключей.',
+    },
+    {
+      id: 'deepseek',
+      name: 'DeepSeek Official API',
+      tag: 'DeepSeek V3 / R1',
+      tagColor: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
+      desc: 'Официальный прямой доступ к мощным моделям deepseek-chat и deepseek-reasoner.',
     },
     {
       id: 'openrouter',
       name: 'OpenRouter Free AI',
       tag: 'Бесплатные модели :free',
       tagColor: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-      desc: 'Доступ к Gemini Flash Lite, Llama 3.3 70B, Mistral, Qwen с тегом :free.',
+      desc: 'DeepSeek R1 Free, Gemini Flash Lite, Llama 3.3 70B, Qwen с тегом :free.',
     },
     {
       id: 'groq',
@@ -100,18 +131,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     {
       id: 'gemini',
       name: 'Google Gemini API',
-      tag: 'Google AI Studio (Бесплатно)',
-      tagColor: 'bg-sky-500/10 text-sky-400 border-sky-500/30',
+      tag: 'Google AI Studio',
+      tagColor: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
       desc: 'Официальный бесплатный ключ Google Gemini 2.0 Flash / 1.5 Flash.',
     },
   ];
 
+  const ollamaModels = [
+    { id: 'deepseek-r1', name: 'DeepSeek R1 (Рекомендуется — лучшая рассуждающая модель)' },
+    { id: 'deepseek-r1:1.5b', name: 'DeepSeek R1 1.5B (Легкая, летает на любом ноутбуке)' },
+    { id: 'deepseek-r1:7b', name: 'DeepSeek R1 7B (Сбалансированная мощность)' },
+    { id: 'deepseek-r1:8b', name: 'DeepSeek R1 8B (Высокая грамматическая точность)' },
+    { id: 'deepseek-coder', name: 'DeepSeek Coder (Логика и грамматика)' },
+    { id: 'llama3.2', name: 'Llama 3.2 (Быстрая модель Meta)' },
+    { id: 'qwen2.5', name: 'Qwen 2.5 (Отличное знание языков)' },
+  ];
+
+  const deepseekOfficialModels = [
+    { id: 'deepseek-chat', name: 'DeepSeek-V3 (deepseek-chat) — Сверхбыстрая и точная' },
+    { id: 'deepseek-reasoner', name: 'DeepSeek-R1 (deepseek-reasoner) — Максимальные рассуждения' },
+  ];
+
   const openRouterFreeModels = [
-    { id: 'google/gemini-2.0-flash-lite:free', name: 'Gemini 2.0 Flash Lite (Бесплатно, рекомендуется)' },
+    { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 (Рассуждающая нейросеть, бесплатно, топ)' },
+    { id: 'google/gemini-2.0-flash-lite:free', name: 'Gemini 2.0 Flash Lite (Бесплатно, быстро)' },
     { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B Instruct (Бесплатно)' },
-    { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B Instruct (Бесплатно)' },
     { id: 'qwen/qwen-2.5-72b-instruct:free', name: 'Qwen 2.5 72B Instruct (Бесплатно)' },
-    { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 (Рассуждающая, бесплатно)' },
+    { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B Instruct (Бесплатно)' },
   ];
 
   const groqFreeModels = [
@@ -139,7 +185,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Настройки тренажера и ИИ-моделей
               </h2>
               <p className="text-xs text-slate-400 hidden sm:block">
-                Выбери бесплатную ИИ-модель или используй встроенный оффлайн-движок
+                Выбери бесплатную оффлайн-нейросеть DeepSeek или облачный ИИ
               </p>
             </div>
           </div>
@@ -186,6 +232,125 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               })}
             </div>
           </div>
+
+          {/* Configuration for Ollama Local DeepSeek */}
+          {current.provider === 'ollama' && (
+            <div className="p-4 rounded-xl bg-slate-950/70 border border-teal-500/30 space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5" /> Ollama Local AI (100% Оффлайн):
+                </span>
+                <a
+                  href="https://ollama.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-teal-400 hover:text-teal-300 flex items-center gap-1 font-medium underline"
+                >
+                  Скачать Ollama <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              {/* Instructions banner */}
+              <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-3 text-xs space-y-2">
+                <p className="text-slate-300">
+                  <span className="font-semibold text-teal-300">Как запустить DeepSeek оффлайн:</span> установите Ollama и выполните в терминале команду:
+                </p>
+                <div className="flex items-center justify-between bg-black/60 rounded px-2.5 py-1.5 border border-slate-800 font-mono text-emerald-400">
+                  <span>ollama run {current.ollamaModel || 'deepseek-r1'}</span>
+                  <button
+                    onClick={() => handleCopyOllamaCmd(`ollama run ${current.ollamaModel || 'deepseek-r1'}`)}
+                    className="text-slate-400 hover:text-white p-1 ml-2 transition-colors cursor-pointer"
+                    title="Скопировать команду"
+                  >
+                    {copiedCmd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Работает полностью локально на вашем компьютере без интернета и без API ключей!
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400 font-medium">Оффлайн-модель Ollama:</label>
+                <select
+                  value={current.ollamaModel || 'deepseek-r1'}
+                  onChange={(e) => setCurrent({ ...current, ollamaModel: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 cursor-pointer"
+                >
+                  {ollamaModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400 font-medium">Адрес локального сервера (Endpoint):</label>
+                <input
+                  type="text"
+                  value={current.ollamaEndpoint || 'http://localhost:11434/v1'}
+                  onChange={(e) => setCurrent({ ...current, ollamaEndpoint: e.target.value })}
+                  placeholder="http://localhost:11434/v1"
+                  className="w-full bg-slate-900 border border-slate-700 focus:border-teal-500 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none"
+                />
+                <span className="text-[10px] text-slate-500">
+                  Стандартный адрес Ollama: http://localhost:11434/v1 (или LM Studio: http://localhost:1234/v1)
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Configuration for DeepSeek Official API */}
+          {current.provider === 'deepseek' && (
+            <div className="p-4 rounded-xl bg-slate-950/70 border border-sky-500/30 space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5" /> DeepSeek API Ключ:
+                </span>
+                <a
+                  href="https://platform.deepseek.com/api_keys"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 font-medium underline"
+                >
+                  Получить ключ DeepSeek <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={current.deepseekApiKey || ''}
+                  onChange={(e) => setCurrent({ ...current, deepseekApiKey: e.target.value })}
+                  placeholder="sk-..."
+                  className="w-full bg-slate-900 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-white p-1"
+                >
+                  {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400 font-medium">Модель DeepSeek:</label>
+                <select
+                  value={current.deepseekModel || 'deepseek-chat'}
+                  onChange={(e) => setCurrent({ ...current, deepseekModel: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
+                >
+                  {deepseekOfficialModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Configuration for OpenRouter */}
           {current.provider === 'openrouter' && (
@@ -341,11 +506,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
           {/* Test Connection Button */}
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
             <button
               onClick={handleTestConnection}
               disabled={testing}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
             >
               {testing ? (
                 <>
@@ -362,7 +527,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {testResult && (
               <div
-                className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 ${
+                className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 flex-1 ${
                   testResult.success
                     ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
                     : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
@@ -373,7 +538,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 ) : (
                   <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
                 )}
-                <span>{testResult.message}</span>
+                <span className="break-words">{testResult.message}</span>
               </div>
             )}
           </div>
